@@ -1,5 +1,9 @@
 const path = require('node:path')
-const { app, BrowserWindow, Tray, nativeImage, ipcMain } = require('electron')
+const { execFile } = require('node:child_process')
+const { promisify } = require('node:util')
+const { app, BrowserWindow, Tray, nativeImage, ipcMain, shell } = require('electron')
+
+const execFileAsync = promisify(execFile)
 
 let mainWindow = null
 let tray = null
@@ -60,6 +64,47 @@ function toggleWindow() {
   }
 }
 
+async function runGhCommand(args) {
+  const { stdout } = await execFileAsync('gh', args, {
+    windowsHide: true,
+    timeout: 15000,
+    maxBuffer: 1024 * 1024,
+  })
+
+  return stdout.trim()
+}
+
+async function getGhCliStatus() {
+  try {
+    await runGhCommand(['--version'])
+  } catch {
+    return {
+      available: false,
+      authenticated: false,
+      login: null,
+      message: 'GitHub CLI is not installed.',
+    }
+  }
+
+  try {
+    await runGhCommand(['auth', 'token'])
+    const login = await runGhCommand(['api', 'user', '-q', '.login'])
+    return {
+      available: true,
+      authenticated: true,
+      login: login || null,
+      message: login ? `Authenticated as ${login}` : 'Authenticated in GitHub CLI.',
+    }
+  } catch {
+    return {
+      available: true,
+      authenticated: false,
+      login: null,
+      message: 'Run gh auth login in a terminal to connect GitHub CLI.',
+    }
+  }
+}
+
 app.whenReady().then(() => {
   createWindow()
   tray = new Tray(createTrayIcon())
@@ -67,6 +112,9 @@ app.whenReady().then(() => {
   tray.on('click', toggleWindow)
 
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('auth:getGhCliStatus', () => getGhCliStatus())
+  ipcMain.handle('auth:getGhCliToken', async () => runGhCommand(['auth', 'token']))
+  ipcMain.handle('shell:openExternal', (_event, url) => shell.openExternal(url))
 })
 
 app.on('window-all-closed', (event) => {

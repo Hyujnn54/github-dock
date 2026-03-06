@@ -20,6 +20,15 @@ import type {
 
 type SectionKey = 'repositories' | 'pulls' | 'issues' | 'branches' | 'notifications'
 
+type AuthSource = 'manual' | 'gh-cli' | null
+
+type CliAuthState = {
+  available: boolean
+  authenticated: boolean
+  login: string | null
+  message: string
+}
+
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: 'repositories', label: 'Repositories' },
   { key: 'pulls', label: 'Pull Requests' },
@@ -43,18 +52,37 @@ function App() {
   const [checkRuns, setCheckRuns] = useState<CheckRunsResponse | null>(null)
   const [section, setSection] = useState<SectionKey>('repositories')
   const [repoSearch, setRepoSearch] = useState('')
+  const [authSource, setAuthSource] = useState<AuthSource>(null)
+  const [cliAuth, setCliAuth] = useState<CliAuthState | null>(null)
   const [loading, setLoading] = useState(false)
   const [repoLoading, setRepoLoading] = useState(false)
   const [error, setError] = useState('')
   const [lastSynced, setLastSynced] = useState('')
 
   useEffect(() => {
+    void initializeAuth()
+  }, [])
+
+  async function initializeAuth() {
+    const status = await window.githubDock?.getGhCliStatus()
+    if (status) {
+      setCliAuth(status)
+    }
+
+    const storedSource = (window.localStorage.getItem('github-dock-auth-source') as AuthSource) ?? null
     const storedToken = window.localStorage.getItem('github-dock-token') ?? ''
+
+    if (storedSource === 'gh-cli' && status?.authenticated) {
+      await connectWithGhCli(false)
+      return
+    }
+
     if (storedToken) {
       setTokenInput(storedToken)
       setToken(storedToken)
+      setAuthSource('manual')
     }
-  }, [])
+  }
 
   useEffect(() => {
     if (!token) {
@@ -131,7 +159,40 @@ function App() {
     }
 
     window.localStorage.setItem('github-dock-token', trimmedToken)
+    window.localStorage.setItem('github-dock-auth-source', 'manual')
     setToken(trimmedToken)
+    setAuthSource('manual')
+  }
+
+  async function connectWithGhCli(persistSource: boolean = true) {
+    setError('')
+
+    try {
+      const cliToken = await window.githubDock?.getGhCliToken()
+      if (!cliToken) {
+        throw new Error('GitHub CLI did not return a token.')
+      }
+
+      window.localStorage.removeItem('github-dock-token')
+      if (persistSource) {
+        window.localStorage.setItem('github-dock-auth-source', 'gh-cli')
+      }
+      setTokenInput('')
+      setToken(cliToken)
+      setAuthSource('gh-cli')
+
+      const status = await window.githubDock?.getGhCliStatus()
+      if (status) {
+        setCliAuth(status)
+      }
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : 'Failed to connect through GitHub CLI.'
+      setError(message)
+    }
+  }
+
+  async function openGitHubCliDocs() {
+    await window.githubDock?.openExternal('https://cli.github.com/')
   }
 
   function handleDisconnect() {
@@ -150,6 +211,8 @@ function App() {
     setCheckRuns(null)
     setError('')
     setLastSynced('')
+    setAuthSource(null)
+    window.localStorage.removeItem('github-dock-auth-source')
   }
 
   const filteredRepos = useMemo(() => {
@@ -242,6 +305,9 @@ function App() {
               placeholder="GitHub token"
             />
             <button type="submit">Connect</button>
+            <button type="button" className="secondary-button" onClick={() => void connectWithGhCli()}>
+              Use GitHub CLI
+            </button>
             <button type="button" className="secondary-button" onClick={handleDisconnect}>
               Clear
             </button>
@@ -294,9 +360,33 @@ function App() {
                   <>
                     <p>{user.name ?? user.login}</p>
                     <span className="muted">@{user.login}</span>
+                    <div className="status-pill-row top-gap">
+                      <span className="status-pill neutral">{authSource === 'gh-cli' ? 'GitHub CLI auth' : 'Manual token'}</span>
+                    </div>
                   </>
                 ) : (
                   <p className="muted">Not connected</p>
+                )}
+              </div>
+
+              <div className="panel-card">
+                <h3>GitHub CLI</h3>
+                {cliAuth ? (
+                  <>
+                    <p>{cliAuth.message}</p>
+                    <div className="status-pill-row top-gap">
+                      <span className={`status-pill ${cliAuth.authenticated ? 'success' : 'neutral'}`}>
+                        {cliAuth.available ? (cliAuth.authenticated ? 'Ready' : 'Not logged in') : 'Not installed'}
+                      </span>
+                    </div>
+                    {!cliAuth.available ? (
+                      <button type="button" className="secondary-button top-gap" onClick={() => void openGitHubCliDocs()}>
+                        Install GitHub CLI
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="muted">Checking GitHub CLI status.</p>
                 )}
               </div>
 

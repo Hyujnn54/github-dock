@@ -13,6 +13,7 @@ GitHub Dock is a small desktop GitHub companion app built with Electron, React, 
 - Branch protection and required-check indicators
 - GitHub notifications feed when the token has notification access
 - Tray icon that toggles the app window
+- GitHub CLI authentication path for desktop-friendly sign-in
 
 ## Stack
 
@@ -30,14 +31,24 @@ npm run dev
 
 The app expects a GitHub personal access token entered in the UI. For the notifications view, use a token with notification access in addition to repository access.
 
+If GitHub CLI is installed and logged in on the machine, the app can also connect through `gh auth token` without requiring a manually pasted token.
+
 ## Build
 
 ```bash
 npm run build
 ```
 
+## Package for Windows
+
+```bash
+npm run package:win
+```
+
+The packaged portable executable is written to `release/`.
+
 ## Notes
 
 - The current version focuses on repository state, branches, pull requests, issues, notifications, and branch health indicators
-- Authentication is currently handled through a token entered in the UI and stored in local browser storage inside the app session
-- Packaging and auto-update workflows are not implemented yet
+- Authentication supports manual token entry and GitHub CLI-based login
+- Auto-update workflows are not implemented yet
