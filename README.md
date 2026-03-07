@@ -29,7 +29,14 @@ npm install
 npm run dev
 ```
 
-The app expects a GitHub personal access token entered in the UI. For the notifications view, use a token with notification access in addition to repository access.
+For in-app browser sign-in, set `GITHUB_OAUTH_CLIENT_ID` before starting the app. This should be the client ID for a GitHub OAuth App configured for device flow.
+
+```bash
+$env:GITHUB_OAUTH_CLIENT_ID="your-client-id"
+npm run dev
+```
+
+The default sign-in path is now browser approval. GitHub CLI remains available as a fallback if it is installed and already authenticated.
 
 If GitHub CLI is installed and logged in on the machine, the app can also connect through `gh auth token` without requiring a manually pasted token.
 
